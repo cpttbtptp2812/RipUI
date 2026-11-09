@@ -12,3 +12,4 @@ dist-ssr
 *.sln
 *.sw?
 vite.config.ts.timestamp-*
+
