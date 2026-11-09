@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 极简无衬线系统字体 */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: transparent !important;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 厌世猫咪骨骼深呼吸动画 */
+@keyframes catBreathing {
+  0% {
+    transform: scale(1, 1);
+  }
+  45% {
+    transform: scale(1.008, 1.026) translateY(-1px);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+.cat-breathing {
+  transform-origin: bottom center;
+  animation: catBreathing 2.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* 坐姿轻微浮动 */
+@keyframes catGentleHover {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.cat-gentle-hover {
+  animation: catGentleHover 3.2s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Electron 窗口拖拽区域支持 */
+.drag-handle {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
