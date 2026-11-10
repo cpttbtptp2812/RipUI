@@ -15,7 +15,6 @@ export default defineConfig(({ mode }) => {
           input: {
             popup: resolve(__dirname, 'popup.html'),
             templates: resolve(__dirname, 'templates.html'),
-            content: resolve(__dirname, 'src/extension/content.tsx'),
             background: resolve(__dirname, 'src/extension/background.ts'),
           },
           output: {
