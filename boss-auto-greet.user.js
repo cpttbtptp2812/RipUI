@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Boss直聘自动打招呼与智能投递（王旭-全栈/AI Agent定制版）
 // @namespace    http://tampermonkey.net/
-// @version      3.8.3
-// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州严格锁定与三城轮投、苏州全辖区(含昆山/常熟/园区)无死角识别、5-15秒真随机防封冷却、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
+// @version      3.8.5
+// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州严格锁定与三城轮投、苏州全辖区(含昆山/常熟/园区)无死角识别、5-15秒真随机防封冷却(秒级动态倒计时)、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
 // @author       Antigravity & WangXu
 // @match        https://www.zhipin.com/web/geek/*
 // @include      https://www.zhipin.com/web/geek/*
@@ -1014,7 +1014,7 @@
             panel.id = "boss-auto-panel";
             panel.innerHTML = `
                 <div class="bap-header">
-                    <span class="bap-title">⚡ Boss 智能投递 (王旭·全栈/AI版 v3.8.2)</span>
+                    <span class="bap-title">⚡ Boss 智能投递 (王旭·全栈/AI版 v3.8.5)</span>
                     <button id="bap-toggle-btn" class="bap-btn-mini" title="最小化">_</button>
                 </div>
                 <div class="bap-body" id="bap-body-content">
@@ -1062,9 +1062,9 @@
                             <div class="bap-col">
                                 <label>⏳ 投后防封冷却 (随机):</label>
                                 <div class="bap-input-wrap bap-range-wrap">
-                                    <input type="number" id="bap-min-delay" value="${CONFIG.minDelaySec || 5}" title="投完一个后最小随机等待秒数" />
+                                    <input type="text" inputmode="numeric" id="bap-min-delay" value="${CONFIG.minDelaySec || 5}" title="投完一个后最小随机等待秒数(默认5秒)" />
                                     <span class="bap-sep">~</span>
-                                    <input type="number" id="bap-max-delay" value="${CONFIG.maxDelaySec || 15}" title="投完一个后最大随机等待秒数" />
+                                    <input type="text" inputmode="numeric" id="bap-max-delay" value="${CONFIG.maxDelaySec || 15}" title="投完一个后最大随机等待秒数(默认15秒)" />
                                     <span class="bap-unit">秒</span>
                                 </div>
                             </div>
@@ -1219,20 +1219,34 @@
                 }
                 .bap-range-wrap {
                     padding: 0 4px;
-                    gap: 2px;
+                    gap: 3px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
                 }
                 .bap-range-wrap input {
-                    width: 32px !important;
+                    width: 36px !important;
+                    min-width: 32px !important;
                     text-align: center !important;
                     color: #00bebd !important;
                     font-weight: 700 !important;
+                    font-size: 13px !important;
+                    background: #f1f5f9 !important;
+                    border-radius: 4px !important;
+                    height: 22px !important;
+                    line-height: 22px !important;
+                }
+                .bap-range-wrap input:focus {
+                    background: #ffffff !important;
+                    box-shadow: 0 0 0 1px #00bebd !important;
                 }
                 .bap-sep {
                     font-size: 12px;
-                    color: #94a3b8;
+                    color: #64748b;
                     font-weight: bold;
                     user-select: none;
                     flex-shrink: 0;
+                    margin: 0 1px;
                 }
                 .bap-status-msg {
                     font-size: 12px;
@@ -1372,15 +1386,39 @@
                 CONFIG.maxGreetCountPerDay = parseInt(e.target.value, 10) || 50;
                 GM_setValue("boss_auto_config", CONFIG);
             });
-            document.getElementById("bap-min-delay")?.addEventListener("input", (e) => {
-                CONFIG.minDelaySec = Math.max(1, parseInt(e.target.value, 10) || 5);
-                GM_setValue("boss_auto_config", CONFIG);
-            });
-            document.getElementById("bap-max-delay")?.addEventListener("input", (e) => {
-                CONFIG.maxDelaySec = Math.max(CONFIG.minDelaySec || 5, parseInt(e.target.value, 10) || 15);
-                GM_setValue("boss_auto_config", CONFIG);
-                logStatus(`⏱️ 投递后随机等待冷却已设为: ${CONFIG.minDelaySec || 5} - ${CONFIG.maxDelaySec} 秒`);
-            });
+            const minDelayEl = document.getElementById("bap-min-delay");
+            const maxDelayEl = document.getElementById("bap-max-delay");
+            if (minDelayEl) {
+                minDelayEl.addEventListener("input", (e) => {
+                    const cleaned = e.target.value.replace(/\D/g, '');
+                    const val = parseInt(cleaned, 10);
+                    if (!isNaN(val) && val >= 1) {
+                        CONFIG.minDelaySec = val;
+                        GM_setValue("boss_auto_config", CONFIG);
+                    }
+                });
+                minDelayEl.addEventListener("blur", (e) => {
+                    if (!e.target.value.trim() || isNaN(parseInt(e.target.value, 10))) {
+                        e.target.value = CONFIG.minDelaySec || 5;
+                    }
+                });
+            }
+            if (maxDelayEl) {
+                maxDelayEl.addEventListener("input", (e) => {
+                    const cleaned = e.target.value.replace(/\D/g, '');
+                    const val = parseInt(cleaned, 10);
+                    if (!isNaN(val) && val >= 1) {
+                        CONFIG.maxDelaySec = Math.max(CONFIG.minDelaySec || 5, val);
+                        GM_setValue("boss_auto_config", CONFIG);
+                        logStatus(`⏱️ 投递后随机等待冷却已设为: ${CONFIG.minDelaySec || 5} ~ ${CONFIG.maxDelaySec} 秒`);
+                    }
+                });
+                maxDelayEl.addEventListener("blur", (e) => {
+                    if (!e.target.value.trim() || isNaN(parseInt(e.target.value, 10))) {
+                        e.target.value = CONFIG.maxDelaySec || 15;
+                    }
+                });
+            }
             document.getElementById("bap-target-cities")?.addEventListener("change", (e) => {
                 CONFIG.targetCities = e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
                 GM_setValue("boss_auto_config", CONFIG);
@@ -1448,6 +1486,22 @@
         const statusEl = document.getElementById("bap-status-text");
         if (statusEl) {
             statusEl.textContent = msg;
+            if (msg.includes("防封") || msg.includes("倒计时")) {
+                statusEl.style.background = "#f0fdf4";
+                statusEl.style.color = "#15803d";
+                statusEl.style.border = "1px solid #bbf7d0";
+                statusEl.style.fontWeight = "600";
+            } else if (msg.includes("绝杀") || msg.includes("跳过") || msg.includes("拦截")) {
+                statusEl.style.background = "#fff1f2";
+                statusEl.style.color = "#be123c";
+                statusEl.style.border = "1px solid #fecdd3";
+                statusEl.style.fontWeight = "normal";
+            } else {
+                statusEl.style.background = "#fdf6ec";
+                statusEl.style.color = "#b45309";
+                statusEl.style.border = "none";
+                statusEl.style.fontWeight = "normal";
+            }
         }
         console.log(`[BossAutoGreet] ${msg}`);
     }
