@@ -8,3 +8,4 @@ ReactDOM.createRoot(document.getElementById('templates-root')!).render(
     <TemplatesPage />
   </React.StrictMode>
 );
+

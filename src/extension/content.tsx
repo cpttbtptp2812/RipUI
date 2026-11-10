@@ -4,6 +4,7 @@ import { extractDomTree } from '../engine/domExtractor';
 import { LaserInspector } from '../components/LaserInspector';
 import { RipDrawer } from '../components/RipDrawer';
 import { RipNode } from '../engine/types';
+import tailwindStyles from '../index.css?inline';
 
 // 创建与挂载 Shadow DOM 容器
 const hostEl = document.createElement('div');
@@ -12,12 +13,12 @@ document.body.appendChild(hostEl);
 
 const shadowRoot = hostEl.attachShadow({ mode: 'open' });
 
-// 注入 Tailwind 与基础样式至 Shadow DOM
+// 注入离线编译的完整 Tailwind 与基础样式至 Shadow DOM
 const styleTag = document.createElement('style');
 styleTag.textContent = `
-  @import url('https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css');
+  ${tailwindStyles}
   :host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
 `;
 shadowRoot.appendChild(styleTag);
 

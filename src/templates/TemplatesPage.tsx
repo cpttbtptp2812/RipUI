@@ -352,3 +352,4 @@ export const TemplatesPage: React.FC = () => {
     </div>
   );
 };
+

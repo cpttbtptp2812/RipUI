@@ -397,3 +397,4 @@ export async function deleteTemplate(id: string): Promise<RipTemplate[]> {
   await saveTemplates(updated);
   return updated;
 }
+
