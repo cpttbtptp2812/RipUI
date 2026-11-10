@@ -127,3 +127,4 @@ export function extractDomTree(
     height: rect.height
   };
 }
+

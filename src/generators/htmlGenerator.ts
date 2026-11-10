@@ -48,3 +48,4 @@ function nodeToHtml(node: RipNode, level: number): string {
 export function generateHtmlSnippet(rootNode: RipNode): string {
   return nodeToHtml(rootNode, 0);
 }
+

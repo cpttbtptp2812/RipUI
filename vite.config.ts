@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           input: {
             popup: resolve(__dirname, 'popup.html'),
+            templates: resolve(__dirname, 'templates.html'),
             content: resolve(__dirname, 'src/extension/content.tsx'),
             background: resolve(__dirname, 'src/extension/background.ts'),
           },
@@ -31,7 +32,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 5173,
+      host: true,
+      port: 5174,
       open: true,
     },
     build: {

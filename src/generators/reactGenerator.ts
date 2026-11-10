@@ -76,3 +76,4 @@ ${jsxBody}
 export default ${componentName};
 `;
 }
+

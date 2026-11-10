@@ -71,7 +71,17 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <a
+            href="/templates.html"
+            target="_blank"
+            rel="noreferrer"
+            className="px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-all flex items-center gap-1.5 text-xs font-medium"
+          >
+            <span>已有模板库</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-200">New</span>
+          </a>
+
           <button
             onClick={() => setInspecting(!inspecting)}
             className={`px-4 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition-all shadow-lg ${

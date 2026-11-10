@@ -81,3 +81,4 @@ export const LaserInspector: React.FC<LaserInspectorProps> = ({ active, onSelect
     </div>
   );
 };
+

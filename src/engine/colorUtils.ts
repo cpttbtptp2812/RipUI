@@ -126,3 +126,4 @@ export function toTailwindColor(prefix: 'bg' | 'text' | 'border', colorStr: stri
   }
   return `${prefix}-[#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}]`;
 }
+

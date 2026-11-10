@@ -102,3 +102,4 @@ RipUI Architecture:
 ## 📄 License
 
 MIT License © 2026 [Wang Xu](https://github.com/cpttbtptp2812) & RipUI Contributors.
+

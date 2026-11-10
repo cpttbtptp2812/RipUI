@@ -213,3 +213,4 @@ export function convertComputedStylesToTailwind(styles: Record<string, string>, 
 
   return classes.filter(Boolean);
 }
+

@@ -10,3 +10,4 @@
   <rect width="124" height="124" x="2" y="2" rx="26" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
   <path d="M72 16L32 72h32l-8 40 40-56H64l8-40z" fill="url(#grad)" filter="drop-shadow(0 0 12px rgba(6,182,212,0.5))"/>
 </svg>
+

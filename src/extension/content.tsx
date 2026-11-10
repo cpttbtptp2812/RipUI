@@ -84,3 +84,4 @@ function ExtensionApp() {
 }
 
 ReactDOM.createRoot(mountPoint).render(<ExtensionApp />);
+
