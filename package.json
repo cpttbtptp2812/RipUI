@@ -1,33 +1,29 @@
 {
-  "name": "aitop",
+  "name": "rip-ui",
   "private": true,
   "version": "0.1.0",
+  "description": "⚡ 1-click real DOM & CSS reverse-engineering tool to clean React + Tailwind CSS components.",
   "type": "module",
-  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "desktop": "concurrently -k \"vite\" \"electron .\"",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "proxy": "node ./server/proxy.js"
+    "build": "tsc && vite build",
+    "build:extension": "vite build --mode extension",
+    "preview": "vite preview"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.5.4",
-    "three": "^0.187.0"
+    "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.280",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
-    "concurrently": "^10.0.7",
-    "electron": "^45.2.3",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "~5.6.2",

@@ -1,23 +1,41 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { resolve } from 'path';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    host: '0.0.0.0',
-    port: 5200,
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8900',
-        changeOrigin: true,
+export default defineConfig(({ mode }) => {
+  const isExtension = mode === 'extension';
+
+  if (isExtension) {
+    return {
+      plugins: [react()],
+      build: {
+        outDir: 'dist',
+        emptyOutDir: true,
+        rollupOptions: {
+          input: {
+            popup: resolve(__dirname, 'popup.html'),
+            content: resolve(__dirname, 'src/extension/content.tsx'),
+            background: resolve(__dirname, 'src/extension/background.ts'),
+          },
+          output: {
+            entryFileNames: '[name].js',
+            chunkFileNames: 'chunks/[name].js',
+            assetFileNames: 'assets/[name].[ext]',
+          },
+        },
       },
+    };
+  }
+
+  // 默认 Web Playground 开发服务器模式
+  return {
+    plugins: [react()],
+    server: {
+      port: 5173,
+      open: true,
     },
-  },
+    build: {
+      outDir: 'dist',
+    },
+  };
 });
