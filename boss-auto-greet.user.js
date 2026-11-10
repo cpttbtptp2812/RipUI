@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Boss直聘自动打招呼与智能投递（王旭-全栈/AI Agent定制版）
 // @namespace    http://tampermonkey.net/
-// @version      3.8.1
-// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州三城接力锁定、投完随机5-15秒防封安全冷却、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
+// @version      3.8.2
+// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州三城接力锁定、5-15秒真随机防封冷却(跨页持久+实时倒计时面板)、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
 // @author       Antigravity & WangXu
 // @match        https://www.zhipin.com/web/geek/*
 // @include      https://www.zhipin.com/web/geek/*
@@ -65,10 +65,10 @@
         savedConfig.excludeCompanies = DEFAULT_CONFIG.excludeCompanies;
     }
     // 强制迁移更新：投完后随机等待 5-15 秒（防封安全策略）
-    if (!savedConfig.minDelaySec || savedConfig.minDelaySec < 5) {
+    if (typeof savedConfig.minDelaySec !== 'number' || savedConfig.minDelaySec < 1) {
         savedConfig.minDelaySec = 5;
     }
-    if (!savedConfig.maxDelaySec || savedConfig.maxDelaySec < 15) {
+    if (typeof savedConfig.maxDelaySec !== 'number' || savedConfig.maxDelaySec < savedConfig.minDelaySec) {
         savedConfig.maxDelaySec = 15;
     }
     let CONFIG = Object.assign({}, DEFAULT_CONFIG, savedConfig);
@@ -484,7 +484,13 @@
             });
 
             if (isGreetingSentInChat()) {
-                showChatBanner("✅ 检测到话术已在聊天记录中送达！1 秒后自动切回列表...", true);
+                const minSec = CONFIG.minDelaySec || 5;
+                const maxSec = CONFIG.maxDelaySec || 15;
+                const delaySec = randomRange(minSec, maxSec);
+                GM_setValue("boss_cooldown_until", Date.now() + delaySec * 1000);
+                GM_setValue("boss_last_delay_sec", delaySec);
+
+                showChatBanner(`✅ 检测到话术已送达！开启 ${delaySec} 秒防封安全冷却，即将切回列表...`, true);
                 let todayCount = GM_getValue("boss_greeted_count_" + getTodayStr(), 0) + 1;
                 GM_setValue("boss_greeted_count_" + getTodayStr(), todayCount);
                 await sleep(1000);
@@ -527,7 +533,14 @@
                 if (hasBubble || isCleared) {
                     let todayCount = GM_getValue("boss_greeted_count_" + getTodayStr(), 0) + 1;
                     GM_setValue("boss_greeted_count_" + getTodayStr(), todayCount);
-                    showChatBanner("✅ 话术已成功送达！1 秒后自动返回职位列表继续下一个...", true);
+
+                    const minSec = CONFIG.minDelaySec || 5;
+                    const maxSec = CONFIG.maxDelaySec || 15;
+                    const delaySec = randomRange(minSec, maxSec);
+                    GM_setValue("boss_cooldown_until", Date.now() + delaySec * 1000);
+                    GM_setValue("boss_last_delay_sec", delaySec);
+
+                    showChatBanner(`✅ 话术已成功送达！开启 ${delaySec} 秒防封安全冷却，即将返回列表...`, true);
                     await sleep(1000);
                     returnToJobList();
                     return;
@@ -542,7 +555,14 @@
                     clearInterval(checkTimer);
                     let todayCount = GM_getValue("boss_greeted_count_" + getTodayStr(), 0) + 1;
                     GM_setValue("boss_greeted_count_" + getTodayStr(), todayCount);
-                    showChatBanner("✅ 检测到已发出！1 秒后返回职位列表...", true);
+
+                    const minSec = CONFIG.minDelaySec || 5;
+                    const maxSec = CONFIG.maxDelaySec || 15;
+                    const delaySec = randomRange(minSec, maxSec);
+                    GM_setValue("boss_cooldown_until", Date.now() + delaySec * 1000);
+                    GM_setValue("boss_last_delay_sec", delaySec);
+
+                    showChatBanner(`✅ 检测到已发出！开启 ${delaySec} 秒防封安全冷却，即将返回列表...`, true);
                     setTimeout(returnToJobList, 1000);
                 }
             }, 300);
@@ -576,13 +596,30 @@
     function syncConfigFromUI() {
         const maxInput = document.getElementById("bap-max-salary");
         const minInput = document.getElementById("bap-min-salary");
+        const maxCountInput = document.getElementById("bap-max-count");
         const excludeCompInput = document.getElementById("bap-exclude-comp");
         const minDelayInput = document.getElementById("bap-min-delay");
         const maxDelayInput = document.getElementById("bap-max-delay");
-        if (maxInput) CONFIG.maxSalaryK = parseInt(maxInput.value, 10) || 26;
-        if (minInput) CONFIG.minSalaryK = parseInt(minInput.value, 10) || 16;
-        if (minDelayInput) CONFIG.minDelaySec = parseInt(minDelayInput.value, 10) || 5;
-        if (maxDelayInput) CONFIG.maxDelaySec = parseInt(maxDelayInput.value, 10) || 15;
+        if (maxInput) {
+            const v = parseInt(maxInput.value, 10);
+            if (!isNaN(v) && v > 0) CONFIG.maxSalaryK = v;
+        }
+        if (minInput) {
+            const v = parseInt(minInput.value, 10);
+            if (!isNaN(v) && v > 0) CONFIG.minSalaryK = v;
+        }
+        if (maxCountInput) {
+            const v = parseInt(maxCountInput.value, 10);
+            if (!isNaN(v) && v > 0) CONFIG.maxGreetCountPerDay = v;
+        }
+        if (minDelayInput) {
+            const v = parseInt(minDelayInput.value, 10);
+            if (!isNaN(v) && v > 0) CONFIG.minDelaySec = v;
+        }
+        if (maxDelayInput) {
+            const v = parseInt(maxDelayInput.value, 10);
+            if (!isNaN(v) && v > 0) CONFIG.maxDelaySec = Math.max(CONFIG.minDelaySec || 5, v);
+        }
         if (excludeCompInput) {
             CONFIG.excludeCompanies = excludeCompInput.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
         }
@@ -921,7 +958,7 @@
             panel.id = "boss-auto-panel";
             panel.innerHTML = `
                 <div class="bap-header">
-                    <span class="bap-title">⚡ Boss 智能投递 (王旭·全栈/AI版 v3.8.1)</span>
+                    <span class="bap-title">⚡ Boss 智能投递 (王旭·全栈/AI版 v3.8.2)</span>
                     <button id="bap-toggle-btn" class="bap-btn-mini" title="最小化">_</button>
                 </div>
                 <div class="bap-body" id="bap-body-content">
@@ -941,26 +978,39 @@
                         <textarea id="bap-greeting-msg" rows="3">${CONFIG.greetingMessage}</textarea>
                     </div>
 
-                    <div class="bap-row">
-                        <div class="bap-col">
-                            <label>底薪下限 (K):</label>
-                            <input type="number" id="bap-min-salary" value="${currentMinSalary}" style="width: 50px;" title="最高薪资低于此值则跳过" />
+                    <div class="bap-card-section">
+                        <div class="bap-row">
+                            <div class="bap-col">
+                                <label>💰 底薪下限 (低于跳过):</label>
+                                <div class="bap-input-wrap">
+                                    <input type="number" id="bap-min-salary" value="${currentMinSalary}" placeholder="16" title="最高薪资低于此值则跳过" />
+                                    <span class="bap-unit">K</span>
+                                </div>
+                            </div>
+                            <div class="bap-col">
+                                <label>🛑 薪资上限 (高于绝杀):</label>
+                                <div class="bap-input-wrap">
+                                    <input type="number" id="bap-max-salary" value="${currentMaxSalary}" placeholder="26" title="图2详情页【立即沟通】点击前物理绝杀！" />
+                                    <span class="bap-unit">K</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bap-col">
-                            <label>薪资上限 (K):</label>
-                            <input type="number" id="bap-max-salary" value="${currentMaxSalary}" style="width: 50px;" placeholder="26" title="图2详情页【立即沟通】点击前物理绝杀！" />
-                        </div>
-                        <div class="bap-col">
-                            <label>单日上限:</label>
-                            <input type="number" id="bap-max-count" value="${CONFIG.maxGreetCountPerDay}" style="width: 45px;" />
-                        </div>
-                        <div class="bap-col">
-                            <label>防封冷却:</label>
-                            <div style="display:flex; align-items:center; gap:2px;">
-                                <input type="number" id="bap-min-delay" value="${CONFIG.minDelaySec || 5}" style="width: 32px;" title="每投完一个后最小随机等待秒数" />
-                                <span>-</span>
-                                <input type="number" id="bap-max-delay" value="${CONFIG.maxDelaySec || 15}" style="width: 32px;" title="每投完一个后最大随机等待秒数" />
-                                <span style="font-size:11px;color:#94a3b8;">秒</span>
+                        <div class="bap-row" style="margin-top: 8px;">
+                            <div class="bap-col">
+                                <label>🎯 单日上限 (保护账号):</label>
+                                <div class="bap-input-wrap">
+                                    <input type="number" id="bap-max-count" value="${CONFIG.maxGreetCountPerDay}" title="单日最大打招呼总数" />
+                                    <span class="bap-unit">个</span>
+                                </div>
+                            </div>
+                            <div class="bap-col">
+                                <label>⏳ 投后防封冷却 (随机):</label>
+                                <div class="bap-input-wrap bap-range-wrap">
+                                    <input type="number" id="bap-min-delay" value="${CONFIG.minDelaySec || 5}" title="投完一个后最小随机等待秒数" />
+                                    <span class="bap-sep">~</span>
+                                    <input type="number" id="bap-max-delay" value="${CONFIG.maxDelaySec || 15}" title="投完一个后最大随机等待秒数" />
+                                    <span class="bap-unit">秒</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1010,7 +1060,7 @@
                     position: fixed;
                     top: 80px;
                     right: 20px;
-                    width: 340px;
+                    width: 350px;
                     background: rgba(255, 255, 255, 0.98);
                     backdrop-filter: blur(12px);
                     border: 2px solid #00bebd;
@@ -1048,7 +1098,7 @@
                 .bap-stat-value { font-size: 15px; font-weight: 700; color: #00bebd; }
                 .bap-field { margin-bottom: 8px; }
                 .bap-field label { display: block; font-size: 11px; color: #555; margin-bottom: 4px; font-weight: 500; }
-                .bap-field textarea, .bap-field input, .bap-col input {
+                .bap-field textarea, .bap-field input {
                     width: 100%;
                     box-sizing: border-box;
                     border: 1px solid #dcdfe6;
@@ -1059,9 +1109,74 @@
                     transition: border 0.2s;
                 }
                 .bap-field textarea:focus, .bap-field input:focus { border-color: #00bebd; }
-                .bap-row { display: flex; gap: 8px; margin-bottom: 8px; }
-                .bap-col { flex: 1; }
-                .bap-col label { display: block; font-size: 11px; color: #555; margin-bottom: 4px; font-weight: 500; }
+
+                /* ── 2x2 优雅卡片布局 ── */
+                .bap-card-section {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 8px 10px;
+                    margin-bottom: 8px;
+                }
+                .bap-row { display: flex; gap: 8px; }
+                .bap-col { flex: 1; min-width: 0; }
+                .bap-col label { display: block; font-size: 11px; color: #475569; margin-bottom: 3px; font-weight: 600; white-space: nowrap; }
+                .bap-input-wrap {
+                    display: flex;
+                    align-items: center;
+                    background: #ffffff;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 6px;
+                    padding: 0 8px;
+                    height: 30px;
+                    box-sizing: border-box;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                }
+                .bap-input-wrap:focus-within {
+                    border-color: #00bebd;
+                    box-shadow: 0 0 0 2px rgba(0, 190, 189, 0.15);
+                }
+                .bap-input-wrap input {
+                    width: 100% !important;
+                    border: none !important;
+                    outline: none !important;
+                    padding: 0 !important;
+                    font-size: 13px !important;
+                    font-weight: 600 !important;
+                    color: #1e293b !important;
+                    background: transparent !important;
+                    -moz-appearance: textfield;
+                }
+                .bap-input-wrap input::-webkit-inner-spin-button,
+                .bap-input-wrap input::-webkit-outer-spin-button {
+                    -webkit-appearance: none !important;
+                    margin: 0 !important;
+                }
+                .bap-unit {
+                    font-size: 12px;
+                    color: #64748b;
+                    font-weight: 500;
+                    margin-left: 4px;
+                    user-select: none;
+                    flex-shrink: 0;
+                }
+                .bap-range-wrap {
+                    padding: 0 4px;
+                    gap: 2px;
+                }
+                .bap-range-wrap input {
+                    width: 32px !important;
+                    text-align: center !important;
+                    color: #00bebd !important;
+                    font-weight: 700 !important;
+                }
+                .bap-sep {
+                    font-size: 12px;
+                    color: #94a3b8;
+                    font-weight: bold;
+                    user-select: none;
+                    flex-shrink: 0;
+                }
                 .bap-status-msg {
                     font-size: 12px;
                     color: #e6a23c;
@@ -1296,6 +1411,20 @@
             const currentMaxLimit = getMaxSalaryLimit();
             const currentMinLimit = getMinSalaryLimit();
 
+            // ── 🛡️ 检查是否有跨页面 / 刷新未结束的投后防封持久冷却 ──
+            const cooldownUntil = GM_getValue("boss_cooldown_until", 0);
+            const lastDelaySec = GM_getValue("boss_last_delay_sec", 10);
+            if (cooldownUntil > Date.now()) {
+                while (Date.now() < cooldownUntil) {
+                    if (!state.isRunning) return;
+                    const remain = Math.ceil((cooldownUntil - Date.now()) / 1000);
+                    logStatus(`⏳ [随机防封冷却中] 刚投完上一职位，等待安全倒计时: ${remain} 秒 (共${lastDelaySec}s随机防封)...`);
+                    await sleep(1000);
+                }
+                logStatus(`✨ 冷却完成！正在检索下一个合适职位...`);
+                await sleep(400);
+            }
+
             if (state.greetedTodayCount >= CONFIG.maxGreetCountPerDay) {
                 stopAutoGreet(`已达单日打招呼上限（${CONFIG.maxGreetCountPerDay}个），自动停止保护账号。`);
                 return;
@@ -1446,7 +1575,7 @@
                     saveState();
                     updateUI();
                     logStatus(`[跳过] 非目标城市 (仅限${CONFIG.targetCities.join('/')}): ${title} @ ${company}`);
-                    await sleep(200);
+                    await sleep(350);
                     return runLoop();
                 }
             }
@@ -1459,7 +1588,7 @@
                     saveState();
                     updateUI();
                     logStatus(`[跳过] 非目标技术岗: ${title}`);
-                    await sleep(200);
+                    await sleep(350);
                     return runLoop();
                 }
             }
@@ -1471,7 +1600,7 @@
                     saveState();
                     updateUI();
                     logStatus(`[跳过] 命中黑名单关键词「${kw}」: ${title}`);
-                    await sleep(200);
+                    await sleep(350);
                     return runLoop();
                 }
             }
@@ -1483,7 +1612,7 @@
                 saveState();
                 updateUI();
                 logStatus(`[跳过] 命中黑名单公司「${hitBlockedCompany}」: ${company}`);
-                await sleep(200);
+                await sleep(350);
                 return runLoop();
             }
 
@@ -1493,7 +1622,7 @@
                 saveState();
                 updateUI();
                 logStatus(`[跳过] 最高薪资 ${salaryRange.max}K 低于底线 ${currentMinLimit}K: ${salaryText}`);
-                await sleep(200);
+                await sleep(350);
                 return runLoop();
             }
 
@@ -1503,7 +1632,7 @@
                 saveState();
                 updateUI();
                 logStatus(`[卡片跳过] 薪资 ${salaryRange.max}K 超过上限 ${currentMaxLimit}K (坚决拦截): ${salaryText}`);
-                await sleep(200);
+                await sleep(350);
                 return runLoop();
             }
 
@@ -1615,12 +1744,24 @@
                     updateUI();
                 }
 
-                // 投完一个后，随机等待 5 - 15 秒（可配置）防封
-                const minWait = CONFIG.minDelaySec || 5;
-                const maxWait = CONFIG.maxDelaySec || 15;
-                const nextDelay = randomRange(minWait, maxWait) * 1000;
-                logStatus(`⏳ [随机冷却] 投完本职位，安全等待 ${Math.round(nextDelay / 1000)} 秒 (${minWait}-${maxWait}s随机防封) 后继续下一个...`);
-                state.timer = setTimeout(runLoop, nextDelay);
+                // ── 🛡️ 投完一个，计算并执行随机等待 5 - 15 秒（实时秒级倒计时） ──
+                syncConfigFromUI();
+                const minWait = Math.max(1, CONFIG.minDelaySec || 5);
+                const maxWait = Math.max(minWait, CONFIG.maxDelaySec || 15);
+                const delaySec = randomRange(minWait, maxWait);
+
+                GM_setValue("boss_cooldown_until", Date.now() + delaySec * 1000);
+                GM_setValue("boss_last_delay_sec", delaySec);
+
+                // 让用户在界面上肉眼看到秒数逐秒递减
+                for (let remain = delaySec; remain > 0; remain--) {
+                    if (!state.isRunning) return;
+                    logStatus(`⏳ [随机安全防封] 本职位已成功发起沟通，防封倒计时: ${remain} 秒 (${delaySec}s随机冷却，区间${minWait}-${maxWait}s)...`);
+                    await sleep(1000);
+                }
+                logStatus(`✨ 安全冷却完成！准备寻找下一个目标职位...`);
+                await sleep(500);
+                return runLoop();
             }
         } catch (err) {
             console.error("[BossAutoGreet Error]", err);
