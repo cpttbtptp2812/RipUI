@@ -107,6 +107,10 @@ if (!document.getElementById('ripui-shadow-host')) {
           node={selectedNode}
           isOpen={drawerOpen}
           onClose={() => setDrawerOpen(false)}
+          onStartInspect={() => {
+            setDrawerOpen(false);
+            setActive(true);
+          }}
         />
       </>
     );

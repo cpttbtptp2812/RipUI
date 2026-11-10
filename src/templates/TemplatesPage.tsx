@@ -1,18 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Zap, Search, Sparkles, Copy, Check, Download, Trash2, 
-  ExternalLink, Code, Eye, RefreshCw, Upload, FolderPlus,
-  ArrowRight, ShieldCheck, Layers, Tag
+  ExternalLink, Code, Eye, RefreshCw, FolderPlus,
+  ArrowRight, Layers, FileCode, Globe, Layout, ChevronRight,
+  Compass, MousePointer
 } from 'lucide-react';
 import { 
   getTemplates, deleteTemplate, saveTemplates, 
   DEFAULT_PRESET_TEMPLATES, RipTemplate 
 } from '../storage/templateStorage';
+import { 
+  getDecompiledProjects, saveDecompiledProjects, 
+  DEFAULT_DECOMPILED_PROJECTS 
+} from '../storage/decompilerStorage';
+import { DecompiledProject, DecompiledPage, DecompiledComponent } from '../engine/decompilerTypes';
 
+type MainTab = 'decompiler' | 'components';
 type CategoryFilter = 'All' | 'Card' | 'Button' | 'Navbar' | 'Pricing' | 'Dashboard' | 'Other';
 type CodeFormat = 'react' | 'vue' | 'html';
 
 export const TemplatesPage: React.FC = () => {
+  const [mainTab, setMainTab] = useState<MainTab>('decompiler');
+
+  // 组件模板库状态
   const [templates, setTemplates] = useState<RipTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -21,35 +31,36 @@ export const TemplatesPage: React.FC = () => {
   const [codeFormat, setCodeFormat] = useState<CodeFormat>('react');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // 多页面反编译工程状态
+  const [projects, setProjects] = useState<DecompiledProject[]>([]);
+  const [selectedProject, setSelectedProject] = useState<DecompiledProject | null>(null);
+  const [selectedPage, setSelectedPage] = useState<DecompiledPage | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<DecompiledComponent | null>(null);
+
   useEffect(() => {
-    loadData();
+    loadAllData();
   }, []);
 
-  const loadData = async () => {
+  const loadAllData = async () => {
     setLoading(true);
-    const data = await getTemplates();
-    setTemplates(data);
-    if (data.length > 0 && !selectedTemplate) {
-      setSelectedTemplate(data[0]);
+    const tmplData = await getTemplates();
+    setTemplates(tmplData);
+    if (tmplData.length > 0 && !selectedTemplate) {
+      setSelectedTemplate(tmplData[0]);
+    }
+
+    const projData = await getDecompiledProjects();
+    setProjects(projData);
+    if (projData.length > 0) {
+      setSelectedProject(projData[0]);
+      if (projData[0].pages.length > 0) {
+        setSelectedPage(projData[0].pages[0]);
+        if (projData[0].pages[0].components.length > 0) {
+          setSelectedComponent(projData[0].pages[0].components[0]);
+        }
+      }
     }
     setLoading(false);
-  };
-
-  const handleDelete = async (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!confirm('确定删除该组件模版吗？')) return;
-    const updated = await deleteTemplate(id);
-    setTemplates(updated);
-    if (selectedTemplate?.id === id) {
-      setSelectedTemplate(updated[0] || null);
-    }
-  };
-
-  const handleResetPresets = async () => {
-    if (!confirm('确定重置恢复官方精选预设模板吗？')) return;
-    await saveTemplates(DEFAULT_PRESET_TEMPLATES);
-    setTemplates(DEFAULT_PRESET_TEMPLATES);
-    setSelectedTemplate(DEFAULT_PRESET_TEMPLATES[0]);
   };
 
   const handleCopyCode = async (code: string, id: string) => {
@@ -62,26 +73,49 @@ export const TemplatesPage: React.FC = () => {
     }
   };
 
-  const handleDownloadTemplate = (template: RipTemplate) => {
-    const ext = codeFormat === 'react' ? 'tsx' : codeFormat === 'vue' ? 'vue' : 'html';
-    const content = codeFormat === 'react' ? template.reactCode : codeFormat === 'vue' ? template.vueCode : template.htmlCode;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${template.name.replace(/\s+/g, '_')}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleResetPresets = async () => {
+    if (!confirm('确定重置恢复官方精选反编译工程与模板吗？')) return;
+    await saveTemplates(DEFAULT_PRESET_TEMPLATES);
+    await saveDecompiledProjects(DEFAULT_DECOMPILED_PROJECTS);
+    setTemplates(DEFAULT_PRESET_TEMPLATES);
+    setProjects(DEFAULT_DECOMPILED_PROJECTS);
+    setSelectedProject(DEFAULT_DECOMPILED_PROJECTS[0]);
+    if (DEFAULT_DECOMPILED_PROJECTS[0].pages[0]) {
+      setSelectedPage(DEFAULT_DECOMPILED_PROJECTS[0].pages[0]);
+      setSelectedComponent(DEFAULT_DECOMPILED_PROJECTS[0].pages[0].components[0]);
+    }
   };
 
-  // 过滤后的模板列表
-  const filteredTemplates = templates.filter((t) => {
-    const matchesCategory = activeCategory === 'All' || t.category === activeCategory;
-    const matchesSearch = !search.trim() || 
-      t.name.toLowerCase().includes(search.toLowerCase()) || 
-      (t.tags && t.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase())));
-    return matchesCategory && matchesSearch;
-  });
+  // 生成当前页面的完整 React 代码
+  const generateFullPageReactCode = (page: DecompiledPage): string => {
+    const importNames = page.components.map((c, i) => `Component${i + 1}`);
+    const jsxParts = page.components.map((c, i) => `        {/* ${c.name} */}\n        <Component${i + 1} />`);
+
+    return `import React from 'react';
+
+${page.components.map((c, i) => `// ================= ${c.name} (${c.category}) =================\n${c.reactCode}`).join('\n\n')}
+
+/**
+ * 页面反编译总装：${page.title} (${page.route})
+ */
+export const ${page.route === '/' ? 'HomePage' : 'Page_' + page.id.replace(/-/g, '_')}: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-[#090b10] text-white flex flex-col gap-6 p-6">
+      <header className="pb-4 border-b border-white/10 flex items-center justify-between">
+        <h1 className="text-xl font-bold">${page.title}</h1>
+        <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">${page.route}</span>
+      </header>
+
+      <main className="flex flex-col gap-6">
+${jsxParts.join('\n\n')}
+      </main>
+    </div>
+  );
+};
+
+export default ${page.route === '/' ? 'HomePage' : 'Page_' + page.id.replace(/-/g, '_')};
+`;
+  };
 
   return (
     <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -94,81 +128,291 @@ export const TemplatesPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                RipUI · 模板中心
+                RipUI · 逆向反编译工作台
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                Templates Hub
+                Studio
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">已保存的 React + Tailwind 逆向组件库</p>
+            <p className="text-[11px] text-slate-400">多页面全套反编译 · 页面/按钮/组件代码工程化</p>
           </div>
+        </div>
+
+        {/* 顶部中间：主模式切换 */}
+        <div className="flex p-1 rounded-xl bg-white/5 border border-white/10 text-xs">
+          <button
+            onClick={() => setMainTab('decompiler')}
+            className={`px-4 py-1.5 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+              mainTab === 'decompiler'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>多页面全套反编译工程</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/20 text-white">
+              {projects.length} 套
+            </span>
+          </button>
+
+          <button
+            onClick={() => setMainTab('components')}
+            className={`px-4 py-1.5 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+              mainTab === 'components'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>独立组件模板库</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/20 text-white">
+              {templates.length}
+            </span>
+          </button>
         </div>
 
         {/* 右侧全局操作 */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleResetPresets}
-            className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs flex items-center gap-1.5 transition-all"
+            className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>重置预设</span>
+            <span>重置预设工程</span>
           </button>
 
           <a
             href="https://github.com/cpttbtptp2812/RipUI"
             target="_blank"
             rel="noreferrer"
-            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all"
+            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs flex items-center gap-1.5 transition-all"
           >
-            <span>GitHub 源码</span>
+            <span>GitHub</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       </header>
 
-      {/* 主体工作台：双栏布局 */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-12 gap-6">
-        {/* 左侧：分类选择 & 模板卡片列表 */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4">
-          {/* 搜索栏 */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="搜索模板名称、标签或分类..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#0f121a] border border-white/10 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50 transition-all shadow-inner"
-            />
-          </div>
-
-          {/* 分类过滤 Tags */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-            {(['All', 'Pricing', 'Card', 'Dashboard', 'Button', 'Navbar', 'Other'] as CategoryFilter[]).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  activeCategory === cat
-                    ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20'
-                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                {cat === 'All' ? '全部模板' : cat}
-              </button>
-            ))}
-          </div>
-
-          {/* 模板列表 */}
-          <div className="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-220px)] pr-1">
-            {filteredTemplates.length === 0 ? (
-              <div className="p-8 text-center rounded-2xl border border-dashed border-white/10 text-slate-500 space-y-2">
-                <Sparkles className="w-8 h-8 text-slate-600 mx-auto" />
-                <p className="text-sm">暂无符合条件的模板</p>
-                <p className="text-xs">在任意网页用快捷键 Alt + R 圈选组件并点击「存为模板」即可入库</p>
+      {/* ============================================================== */}
+      {/* 模式 1：多页面全套反编译工程工作室 (Decompiler Studio)         */}
+      {/* ============================================================== */}
+      {mainTab === 'decompiler' && selectedProject && (
+        <div className="flex-1 max-w-[1600px] w-full mx-auto p-6 grid grid-cols-12 gap-6">
+          {/* 左侧：工程页面树与交互组件 */}
+          <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
+            {/* 项目概览卡片 */}
+            <div className="p-4 rounded-2xl bg-[#0f121a] border border-cyan-500/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  {selectedProject.domain}
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {selectedProject.pages.length} Pages · {selectedProject.pages.reduce((acc, p) => acc + p.components.length, 0)} Components
+                </span>
               </div>
-            ) : (
-              filteredTemplates.map((template) => {
+              <h3 className="font-extrabold text-sm text-white">
+                {selectedProject.name}
+              </h3>
+            </div>
+
+            {/* 多页面树 (Pages Tree) */}
+            <div className="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+              <div className="text-xs text-slate-400 font-semibold px-1 flex items-center gap-1.5">
+                <Layout className="w-3.5 h-3.5 text-cyan-400" />
+                <span>录制与反编译的页面列表</span>
+              </div>
+
+              {selectedProject.pages.map((page) => {
+                const isPageSelected = selectedPage?.id === page.id;
+                return (
+                  <div
+                    key={page.id}
+                    className={`rounded-xl border transition-all overflow-hidden ${
+                      isPageSelected
+                        ? 'bg-[#121622] border-cyan-500/50 shadow-lg shadow-cyan-500/10'
+                        : 'bg-[#0f121a]/80 border-white/5 hover:border-white/20'
+                    }`}
+                  >
+                    {/* 页面主条 */}
+                    <div
+                      onClick={() => {
+                        setSelectedPage(page);
+                        if (page.components.length > 0) setSelectedComponent(page.components[0]);
+                      }}
+                      className="p-3.5 flex items-center justify-between cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <FileCode className={`w-4 h-4 ${isPageSelected ? 'text-cyan-400' : 'text-slate-500'}`} />
+                        <div>
+                          <div className="font-semibold text-xs text-white group-hover:text-cyan-300 transition-colors">
+                            {page.title}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-400">
+                            {page.route}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-300">
+                        {page.components.length} 个组件
+                      </span>
+                    </div>
+
+                    {/* 展开当前页面内反编译出的独立按钮与组件 */}
+                    {isPageSelected && (
+                      <div className="px-3 pb-3 space-y-1.5 pt-1 border-t border-white/5 bg-black/20">
+                        <div className="text-[10px] font-mono text-slate-400 px-1 py-0.5">
+                          页面包含的反编译组件:
+                        </div>
+                        {page.components.map((comp) => {
+                          const isCompSelected = selectedComponent?.id === comp.id;
+                          return (
+                            <div
+                              key={comp.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedComponent(comp);
+                              }}
+                              className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-all ${
+                                isCompSelected
+                                  ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-200'
+                                  : 'bg-white/[0.02] border-white/5 hover:border-white/20 text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-slate-300 font-mono">
+                                  {comp.category}
+                                </span>
+                                <span className="truncate font-medium">{comp.name}</span>
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                                &lt;{comp.tagName}&gt;
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 右侧：多页面与组件渲染画布 + 完整工程代码 */}
+          <div className="col-span-12 lg:col-span-8 flex flex-col rounded-2xl bg-[#0d1017] border border-white/10 overflow-hidden shadow-2xl">
+            {selectedPage && (
+              <>
+                {/* 顶部操作条 */}
+                <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.01]">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
+                      <span>反编译装配：{selectedPage.title}</span>
+                      <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        {selectedPage.route}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {selectedComponent ? `当前查看组件：${selectedComponent.name} (${selectedComponent.category})` : '全页面装配模式'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const fullCode = generateFullPageReactCode(selectedPage);
+                        handleCopyCode(fullCode, selectedPage.id);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+                    >
+                      {copiedId === selectedPage.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedId === selectedPage.id ? 'Copied Full Page!' : '复制整页 React 源码'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 画布预览区：渲染当前反编译的交互效果 */}
+                <div className="p-6 border-b border-white/10 bg-[#080a0f] flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden">
+                  <div className="absolute top-3 left-4 text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Eye className="w-3 h-3 text-cyan-400" />
+                    <span>Real Render Tree Preview (100% Tailwind Output)</span>
+                  </div>
+
+                  {selectedComponent ? (
+                    <div 
+                      className="w-full max-w-2xl my-4 flex items-center justify-center"
+                      dangerouslySetInnerHTML={{ __html: selectedComponent.htmlCode }}
+                    />
+                  ) : (
+                    <div className="space-y-4 w-full max-w-2xl my-4">
+                      {selectedPage.components.map(comp => (
+                        <div key={comp.id} dangerouslySetInnerHTML={{ __html: comp.htmlCode }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 源代码区：展示完整 React + Tailwind TSX 代码 */}
+                <div className="flex-1 p-4 bg-[#05070a] font-mono text-xs overflow-auto max-h-[420px] select-text">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[11px] text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <Code className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>
+                        {selectedComponent 
+                          ? `React TSX Component: <${selectedComponent.name.replace(/\s+/g, '')} />` 
+                          : `Full Page Module: pages${selectedPage.route === '/' ? '/index.tsx' : selectedPage.route + '.tsx'}`}
+                      </span>
+                    </span>
+                    <span className="text-slate-500">Zero Vision Hallucination • Clean React Code</span>
+                  </div>
+                  <pre className="text-slate-300 leading-relaxed overflow-x-auto">
+                    <code>
+                      {selectedComponent ? selectedComponent.reactCode : generateFullPageReactCode(selectedPage)}
+                    </code>
+                  </pre>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 模式 2：独立组件模板库 (Component Hub)                        */}
+      {/* ============================================================== */}
+      {mainTab === 'components' && (
+        <div className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-12 gap-6">
+          {/* 左侧：分类过滤与卡片流 */}
+          <div className="col-span-12 lg:col-span-5 flex flex-col gap-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="搜索模板名称、标签或分类..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#0f121a] border border-white/10 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50 transition-all shadow-inner"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              {(['All', 'Pricing', 'Card', 'Dashboard', 'Button', 'Navbar', 'Other'] as CategoryFilter[]).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all ${
+                    activeCategory === cat
+                      ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20'
+                      : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {cat === 'All' ? '全部模板' : cat}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+              {templates.map((template) => {
                 const isSelected = selectedTemplate?.id === template.id;
                 return (
                   <div
@@ -185,171 +429,48 @@ export const TemplatesPage: React.FC = () => {
                         <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                           {template.category}
                         </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-500">
-                            {new Date(template.createdAt).toLocaleDateString()}
-                          </span>
-                          <button
-                            onClick={(e) => handleDelete(template.id, e)}
-                            title="删除模板"
-                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <span className="text-[10px] text-slate-500">
+                          {new Date(template.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-
                       <h4 className="font-semibold text-sm text-white group-hover:text-cyan-300 transition-colors">
                         {template.name}
                       </h4>
-
-                      {template.tags && template.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          {template.tags.map((tag) => (
-                            <span key={tag} className="text-[10px] px-1.5 py-0.2 rounded bg-white/5 text-slate-400">
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-3 border-t border-white/5 flex items-center justify-between mt-3 text-[11px] text-slate-400">
-                      <span className="truncate max-w-[200px] text-slate-500">
-                        {template.sourceUrl ? new URL(template.sourceUrl).hostname : 'Local Canvas'}
-                      </span>
-                      <span className="text-cyan-400 font-medium flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                        <span>查看与复制代码</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </span>
                     </div>
                   </div>
                 );
-              })
+              })}
+            </div>
+          </div>
+
+          {/* 右侧：单组件代码大屏 */}
+          <div className="col-span-12 lg:col-span-7 flex flex-col rounded-2xl bg-[#0d1017] border border-white/10 overflow-hidden shadow-2xl">
+            {selectedTemplate && (
+              <>
+                <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-sm text-white">{selectedTemplate.name}</h3>
+                    <p className="text-xs text-slate-400">{selectedTemplate.category} · {selectedTemplate.sourceUrl || '本地截取'}</p>
+                  </div>
+                  <button
+                    onClick={() => handleCopyCode(selectedTemplate.reactCode, selectedTemplate.id)}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    {copiedId === selectedTemplate.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedId === selectedTemplate.id ? 'Copied' : 'Copy React'}</span>
+                  </button>
+                </div>
+                <div className="p-6 border-b border-white/10 bg-[#090b10] flex items-center justify-center">
+                  <div dangerouslySetInnerHTML={{ __html: selectedTemplate.htmlCode }} />
+                </div>
+                <div className="flex-1 p-4 bg-[#05070a] font-mono text-xs overflow-auto">
+                  <pre className="text-slate-300"><code>{selectedTemplate.reactCode}</code></pre>
+                </div>
+              </>
             )}
           </div>
         </div>
-
-        {/* 右侧：模板详细预览与代码查看大屏 */}
-        <div className="col-span-12 lg:col-span-7 flex flex-col rounded-2xl bg-[#0d1017] border border-white/10 overflow-hidden shadow-2xl">
-          {selectedTemplate ? (
-            <>
-              {/* 大屏顶部栏 */}
-              <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.01]">
-                <div>
-                  <h3 className="font-bold text-base text-white flex items-center gap-2">
-                    <span>{selectedTemplate.name}</span>
-                    <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                      {selectedTemplate.category}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    来源：{selectedTemplate.sourceUrl || '本地截取'}
-                  </p>
-                </div>
-
-                {/* 格式切换 Tabs */}
-                <div className="flex items-center gap-2">
-                  <div className="flex p-1 rounded-lg bg-black/40 border border-white/10 text-xs">
-                    <button
-                      onClick={() => setCodeFormat('react')}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                        codeFormat === 'react'
-                          ? 'bg-cyan-500 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      React (TSX)
-                    </button>
-                    <button
-                      onClick={() => setCodeFormat('vue')}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                        codeFormat === 'vue'
-                          ? 'bg-cyan-500 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Vue 3
-                    </button>
-                    <button
-                      onClick={() => setCodeFormat('html')}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                        codeFormat === 'html'
-                          ? 'bg-cyan-500 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      HTML
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => handleDownloadTemplate(selectedTemplate)}
-                    title="下载源码文件"
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all text-xs"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const code = codeFormat === 'react' ? selectedTemplate.reactCode : codeFormat === 'vue' ? selectedTemplate.vueCode : selectedTemplate.htmlCode;
-                      handleCopyCode(code, selectedTemplate.id);
-                    }}
-                    className={`px-3.5 py-2 rounded-lg font-medium text-xs flex items-center gap-1.5 transition-all shadow-md ${
-                      copiedId === selectedTemplate.id
-                        ? 'bg-emerald-500 text-white shadow-emerald-500/20'
-                        : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-cyan-500/25'
-                    }`}
-                  >
-                    {copiedId === selectedTemplate.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedId === selectedTemplate.id ? 'Copied!' : 'Copy Code'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 上半部分：真实渲染渲染预览 (Live Preview) */}
-              <div className="p-6 border-b border-white/10 bg-[#090b10] flex flex-col items-center justify-center min-h-[240px] relative overflow-hidden">
-                <div className="absolute top-3 left-4 text-[10px] font-mono text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Eye className="w-3 h-3 text-cyan-400" />
-                  <span>Interactive Live Preview</span>
-                </div>
-
-                <div 
-                  className="w-full max-w-md my-4 flex items-center justify-center"
-                  dangerouslySetInnerHTML={{ __html: selectedTemplate.htmlCode }}
-                />
-              </div>
-
-              {/* 下半部分：代码展示区 */}
-              <div className="flex-1 p-4 bg-[#05070a] font-mono text-xs overflow-auto max-h-[380px] select-text">
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <Code className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Generated Code ({codeFormat.toUpperCase()})</span>
-                  </span>
-                  <span className="text-slate-500">Tailwind CSS Classes Included</span>
-                </div>
-                <pre className="text-slate-300 leading-relaxed overflow-x-auto">
-                  <code>
-                    {codeFormat === 'react' 
-                      ? selectedTemplate.reactCode 
-                      : codeFormat === 'vue' 
-                        ? selectedTemplate.vueCode 
-                        : selectedTemplate.htmlCode}
-                  </code>
-                </pre>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 space-y-3">
-              <Layers className="w-12 h-12 text-slate-700" />
-              <p className="text-sm">请选择左侧模板以查看预览与代码</p>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 };
-

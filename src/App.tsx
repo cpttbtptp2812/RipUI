@@ -49,6 +49,10 @@ export default function App() {
           node={selectedNode}
           isOpen={drawerOpen}
           onClose={() => setDrawerOpen(false)}
+          onStartInspect={() => {
+            setDrawerOpen(false);
+            setInspecting(true);
+          }}
         />
       </div>
 
