@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Boss直聘自动打招呼与智能投递（王旭-全栈/AI Agent定制版）
 // @namespace    http://tampermonkey.net/
-// @version      3.8.2
-// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州三城接力锁定、5-15秒真随机防封冷却(跨页持久+实时倒计时面板)、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
+// @version      3.8.3
+// @description  全自动智能打招呼、强力穿透切回期望Tab(绝不投推荐)、公司黑名单精准屏蔽、页面防重置拦截、杭州/广州/苏州严格锁定与三城轮投、苏州全辖区(含昆山/常熟/园区)无死角识别、5-15秒真随机防封冷却、图2详情页立即沟通前坐标级物理绝杀、聊天页终极安检门闩
 // @author       Antigravity & WangXu
 // @match        https://www.zhipin.com/web/geek/*
 // @include      https://www.zhipin.com/web/geek/*
@@ -646,12 +646,89 @@
         return depth;
     }
 
+    // ── 🌆 城市与下辖行政区/高新区全能智能识别引擎 ──
+    function getCityFromText(text) {
+        if (!text) return "";
+        const clean = text.toLowerCase();
+
+        // 优先精准识别苏州及所有代管市、区县、工业园区
+        const suzhouKws = [
+            "苏州", "昆山", "常熟", "张家港", "太仓", "吴江", "工业园区", "姑苏", "相城", "虎丘", "吴中", "园区", "sip", "snd"
+        ];
+        for (const kw of suzhouKws) {
+            if (clean.includes(kw)) return "苏州";
+        }
+
+        // 杭州各区县
+        const hangzhouKws = [
+            "杭州", "余杭", "滨江", "西湖", "萧山", "拱墅", "上城", "钱塘", "临平", "富阳", "临安"
+        ];
+        for (const kw of hangzhouKws) {
+            if (clean.includes(kw)) return "杭州";
+        }
+
+        // 广州各区县
+        const guangzhouKws = [
+            "广州", "天河", "海珠", "越秀", "白云", "黄埔", "番禺", "花都", "南沙", "增城", "从化", "荔湾"
+        ];
+        for (const kw of guangzhouKws) {
+            if (clean.includes(kw)) return "广州";
+        }
+
+        // 其他常见城市（用于精准排除异地推荐）
+        const otherCities = [
+            "北京", "上海", "深圳", "成都", "武汉", "南京", "西安", "合肥", "长沙", "重庆", "郑州", "东莞", "佛山", "宁波", "无锡", "青岛", "天津"
+        ];
+        for (const oc of otherCities) {
+            if (clean.includes(oc)) return oc;
+        }
+
+        return "";
+    }
+
+    function isJobMatchingCity(areaText, cardFullText, targetCity) {
+        const full = `${areaText} ${cardFullText}`;
+        const detected = getCityFromText(full);
+
+        if (targetCity === "苏州") {
+            return detected === "苏州";
+        }
+        if (targetCity === "杭州") {
+            return detected === "杭州";
+        }
+        if (targetCity === "广州") {
+            return detected === "广州";
+        }
+        if (targetCity === "三城轮投" || !targetCity) {
+            return detected === "杭州" || detected === "广州" || detected === "苏州";
+        }
+        return detected === targetCity;
+    }
+
     function findCityTabElement(cityName) {
+        if (!cityName || cityName === "三城轮投") return null;
         const otherCities = ["杭州", "广州", "苏州"].filter(c => c !== cityName);
         const panel = document.getElementById("boss-auto-panel");
         const miniPill = document.getElementById("boss-mini-pill");
         const banner = document.getElementById("boss-chat-banner");
 
+        // 1. 优先在求职期望专属导航容器中精确定位（支持任意屏幕宽度，无850px限制）
+        const priorityContainers = document.querySelectorAll(
+            '.job-tab-box, .expect-job-box, .job-tab-nav, .job-tab, .filter-wrapper, [class*="job-tab"], [class*="expect-job"]'
+        );
+        for (const container of priorityContainers) {
+            const els = Array.from(container.querySelectorAll('a, li, span, div, button'));
+            for (const el of els) {
+                const txt = (el.innerText || el.textContent || '').trim();
+                const hasOtherCity = otherCities.some(oc => txt.includes(oc));
+                if (txt.includes(cityName) && !hasOtherCity && !txt.includes("推荐") && txt.length <= 30) {
+                    console.log(`[BossAutoGreet] 🎯 容器优先精准命中【${cityName}】Tab:`, el, `文本: "${txt}"`);
+                    return el;
+                }
+            }
+        }
+
+        // 2. 候选元素广域搜索（顶部区域，取消 left<850 限制）
         const allCandidates = Array.from(document.querySelectorAll("a, span, li, button, div, p"));
         const matches = [];
 
@@ -666,40 +743,17 @@
 
             const rect = el.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) continue;
-            if (rect.top < 10 || rect.top > 180) continue;
-            if (rect.left > 850) continue;
+            if (rect.top < 10 || rect.top > 250) continue;
 
             const txt = (el.innerText || el.textContent || '').trim();
             const hasOtherCity = otherCities.some(oc => txt.includes(oc));
-            if (txt.includes(cityName) && !hasOtherCity && !txt.includes("推荐") && txt.length <= 25) {
+            if (txt.includes(cityName) && !hasOtherCity && !txt.includes("推荐") && txt.length <= 30) {
                 matches.push({
                     el: el,
                     depth: getElementDepth(el),
                     length: txt.length,
                     text: txt
                 });
-            }
-        }
-
-        if (matches.length === 0) {
-            for (const el of allCandidates) {
-                if (panel && panel.contains(el)) continue;
-                if (el.closest('.job-list-box, .job-detail, .job-detail-box, .job-card-wrapper, [class*="job-detail"]')) continue;
-
-                const rect = el.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) continue;
-                if (rect.top > 250) continue;
-
-                const txt = (el.innerText || el.textContent || '').trim();
-                const hasOtherCity = otherCities.some(oc => txt.includes(oc));
-                if (txt.includes(cityName) && !hasOtherCity && !txt.includes("推荐") && txt.length <= 25) {
-                    matches.push({
-                        el: el,
-                        depth: getElementDepth(el),
-                        length: txt.length,
-                        text: txt
-                    });
-                }
             }
         }
 
@@ -710,7 +764,7 @@
             return a.length - b.length;
         });
 
-        console.log(`[BossAutoGreet] 🎯 精准定位到【${cityName}】Tab:`, matches[0].el, `文本: "${matches[0].text}"`);
+        console.log(`[BossAutoGreet] 🎯 全局定位到【${cityName}】Tab:`, matches[0].el, `文本: "${matches[0].text}"`);
         return matches[0].el;
     }
 
@@ -788,10 +842,13 @@
     }
 
     function isCurrentTabRecommend() {
+        const targetCity = state.targetTabCity || "杭州";
+        if (targetCity === "三城轮投") return false;
+
         const filterBar = document.querySelector('.search-conditions, .condition-box, .filter-box, [class*="condition"], [class*="filter"]');
         if (filterBar) {
             const txt = filterBar.innerText || '';
-            if (txt.includes("北京") && !txt.includes("杭州") && !txt.includes("广州") && !txt.includes("苏州")) {
+            if (txt.includes("北京") && !txt.includes(targetCity)) {
                 return true;
             }
         }
@@ -811,14 +868,13 @@
             }
         }
 
-        const targetCity = state.targetTabCity || "杭州";
         const cityTabEl = findCityTabElement(targetCity);
         if (cityTabEl) {
             const targets = [cityTabEl, cityTabEl.parentElement, cityTabEl.closest('a'), cityTabEl.closest('li')].filter(Boolean);
             let hasActiveStyle = false;
             for (const t of targets) {
                 const cls = t.className || '';
-                if (cls.includes('active') || cls.includes('cur') || cls.includes('selected')) hasActiveStyle = true;
+                if (cls.includes('active') || cls.includes('cur') || cls.includes('selected') || cls.includes('is-active')) hasActiveStyle = true;
                 const style = window.getComputedStyle(t);
                 if (style.color.includes('190') || style.color.includes('189') || style.color.includes('0, 190')) hasActiveStyle = true;
             }
@@ -1016,11 +1072,12 @@
                     </div>
 
                     <div class="bap-field">
-                        <label>📌 期望城市Tab锁定 (防重置回推荐):</label>
-                        <div style="display: flex; gap: 5px;">
-                            <button id="bap-tab-hz" class="bap-btn ${state.targetTabCity === '杭州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 4px;">锁定杭州</button>
-                            <button id="bap-tab-gz" class="bap-btn ${state.targetTabCity === '广州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 4px;">锁定广州</button>
-                            <button id="bap-tab-sz" class="bap-btn ${state.targetTabCity === '苏州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 4px;">锁定苏州</button>
+                        <label>📌 期望城市锁定 (严格只投所选城市):</label>
+                        <div style="display: flex; gap: 4px;">
+                            <button id="bap-tab-hz" class="bap-btn ${state.targetTabCity === '杭州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 2px; font-size:11px;" title="严格只投杭州">锁定杭州</button>
+                            <button id="bap-tab-gz" class="bap-btn ${state.targetTabCity === '广州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 2px; font-size:11px;" title="严格只投广州">锁定广州</button>
+                            <button id="bap-tab-sz" class="bap-btn ${state.targetTabCity === '苏州' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 2px; font-size:11px;" title="严格只投苏州(含昆山/常熟/园区)">锁定苏州</button>
+                            <button id="bap-tab-all" class="bap-btn ${state.targetTabCity === '三城轮投' ? 'bap-btn-primary' : 'bap-btn-secondary'}" style="flex:1; padding: 6px 2px; font-size:11px;" title="三城协同轮流接力投递">三城轮投</button>
                         </div>
                     </div>
 
@@ -1216,6 +1273,7 @@
             const tabHzBtn = document.getElementById("bap-tab-hz");
             const tabGzBtn = document.getElementById("bap-tab-gz");
             const tabSzBtn = document.getElementById("bap-tab-sz");
+            const tabAllBtn = document.getElementById("bap-tab-all");
 
             toggleBtn?.addEventListener("click", () => {
                 panel.style.display = "none";
@@ -1231,7 +1289,9 @@
                 const el = findCityTabElement("杭州");
                 if (el) {
                     deepClickTab(el);
-                    logStatus("📌 已切换并强力锁定「杭州」期望职位Tab！");
+                    logStatus("📌 已切换并强力锁定「杭州」专属投递！(严格只投杭州)");
+                } else {
+                    logStatus("📌 已锁定「杭州」投递！如页面未切换，请点击页面顶部「杭州」期望标签");
                 }
             });
 
@@ -1243,7 +1303,9 @@
                 const el = findCityTabElement("广州");
                 if (el) {
                     deepClickTab(el);
-                    logStatus("📌 已切换并强力锁定「广州」期望职位Tab！");
+                    logStatus("📌 已切换并强力锁定「广州」专属投递！(严格只投广州)");
+                } else {
+                    logStatus("📌 已锁定「广州」投递！如页面未切换，请点击页面顶部「广州」期望标签");
                 }
             });
 
@@ -1255,8 +1317,18 @@
                 const el = findCityTabElement("苏州");
                 if (el) {
                     deepClickTab(el);
-                    logStatus("📌 已切换并强力锁定「苏州」期望职位Tab！");
+                    logStatus("📌 已切换并强力锁定「苏州」专属投递！(严格只投苏州/昆山/常熟/园区)");
+                } else {
+                    logStatus("📌 已锁定「苏州」投递！如页面未切换，请点击页面顶部「苏州」期望标签");
                 }
+            });
+
+            tabAllBtn?.addEventListener("click", () => {
+                state.targetTabCity = "三城轮投";
+                state.tabSwitchRetries = 0;
+                saveState();
+                updateTabButtonsUI();
+                logStatus("🔄 已开启「三城轮投」模式（杭州、广州、苏州协同轮流投递）");
             });
 
             scrollBtn?.addEventListener("click", () => {
@@ -1335,6 +1407,7 @@
         const tabHzBtn = document.getElementById("bap-tab-hz");
         const tabGzBtn = document.getElementById("bap-tab-gz");
         const tabSzBtn = document.getElementById("bap-tab-sz");
+        const tabAllBtn = document.getElementById("bap-tab-all");
         if (tabHzBtn) {
             tabHzBtn.className = state.targetTabCity === '杭州' ? 'bap-btn bap-btn-primary' : 'bap-btn bap-btn-secondary';
         }
@@ -1343,6 +1416,9 @@
         }
         if (tabSzBtn) {
             tabSzBtn.className = state.targetTabCity === '苏州' ? 'bap-btn bap-btn-primary' : 'bap-btn bap-btn-secondary';
+        }
+        if (tabAllBtn) {
+            tabAllBtn.className = state.targetTabCity === '三城轮投' ? 'bap-btn bap-btn-primary' : 'bap-btn bap-btn-secondary';
         }
     }
 
@@ -1438,7 +1514,7 @@
             const targetCity = state.targetTabCity || "杭州";
             if (isCurrentTabRecommend()) {
                 state.tabSwitchRetries = (state.tabSwitchRetries || 0) + 1;
-                logStatus(`📌 检测到页面在【推荐】，正在强力穿透切回【${targetCity}】Tab (尝试 ${state.tabSwitchRetries})...`);
+                logStatus(`📌 检测到页面未在【${targetCity}】，正在强力切到【${targetCity}】Tab (尝试 ${state.tabSwitchRetries})...`);
 
                 const tabEl = findCityTabElement(targetCity);
                 if (tabEl) {
@@ -1447,22 +1523,25 @@
 
                     if (!isCurrentTabRecommend()) {
                         state.tabSwitchRetries = 0;
-                        logStatus(`✅ 已成功切回【${targetCity}】专属期望Tab！准备扫描职位...`);
+                        logStatus(`✅ 已成功切到【${targetCity}】专属期望Tab！准备扫描职位...`);
                         await sleep(800);
                         return runLoop();
                     }
                 }
 
                 if (state.tabSwitchRetries >= 3) {
-                    logStatus(`👉 提示：已为您高亮顶部【${targetCity}】Tab，请轻按一下该Tab，脚本将自动锁定继续！`);
                     if (tabEl) {
+                        logStatus(`👉 提示：已为您高亮顶部【${targetCity}】Tab，请轻按一下该Tab，脚本将自动锁定继续！`);
                         try {
                             tabEl.style.outline = "4px solid #ff4d4f";
                             tabEl.style.boxShadow = "0 0 16px #ff4d4f";
                         } catch (e) {}
+                        await sleep(3000);
+                        return runLoop();
+                    } else {
+                        stopAutoGreet(`⚠️ 未能定位到【${targetCity}】求职期望标签！请检查 Boss直聘 顶部是否已添加「${targetCity}」期望，或手动点击切换到${targetCity}后再点【开始投递】！`);
+                        return;
                     }
-                    await sleep(3000);
-                    return runLoop();
                 }
 
                 await sleep(1500);
@@ -1507,33 +1586,36 @@
                     await sleep(2500);
                     return runLoop();
                 } else if (state.scrollRetryCount >= 4) {
-                    // 三城无缝自动接力轮换：杭州 -> 广州 -> 苏州
-                    if (state.targetTabCity === "杭州") {
-                        logStatus("🎉「杭州」职位已全部投递完毕！正在自动切换至「广州」继续投递...");
-                        state.targetTabCity = "广州";
-                        saveState();
-                        updateUI();
-                        const gzTabEl = findCityTabElement("广州");
-                        if (gzTabEl) {
-                            deepClickTab(gzTabEl);
-                            state.scrollRetryCount = 0;
-                            await sleep(2500);
-                            return runLoop();
-                        }
-                    } else if (state.targetTabCity === "广州") {
-                        logStatus("🎉「广州」职位已全部投递完毕！正在自动切换至「苏州」继续投递...");
-                        state.targetTabCity = "苏州";
-                        saveState();
-                        updateUI();
-                        const szTabEl = findCityTabElement("苏州");
-                        if (szTabEl) {
-                            deepClickTab(szTabEl);
-                            state.scrollRetryCount = 0;
-                            await sleep(2500);
-                            return runLoop();
+                    if (state.targetTabCity === "三城轮投") {
+                        // 三城轮投接力轮换
+                        const curCity = GM_getValue("boss_relay_city", "杭州");
+                        if (curCity === "杭州") {
+                            logStatus("🎉「杭州」职位已全部翻完！正在自动切换至「广州」继续投递...");
+                            GM_setValue("boss_relay_city", "广州");
+                            const gzTabEl = findCityTabElement("广州");
+                            if (gzTabEl) {
+                                deepClickTab(gzTabEl);
+                                state.scrollRetryCount = 0;
+                                await sleep(2500);
+                                return runLoop();
+                            }
+                        } else if (curCity === "广州") {
+                            logStatus("🎉「广州」职位已全部翻完！正在自动切换至「苏州」继续投递...");
+                            GM_setValue("boss_relay_city", "苏州");
+                            const szTabEl = findCityTabElement("苏州");
+                            if (szTabEl) {
+                                deepClickTab(szTabEl);
+                                state.scrollRetryCount = 0;
+                                await sleep(2500);
+                                return runLoop();
+                            }
+                        } else {
+                            stopAutoGreet("「杭州」、「广州」与「苏州」三地期望职位均已全部投递完成！");
+                            return;
                         }
                     } else {
-                        stopAutoGreet("「杭州」、「广州」与「苏州」三地期望职位均已全部投递完成！");
+                        // 单城锁定模式：当前城市职位扫完即停，坚决不越界跳往其他城市！
+                        stopAutoGreet(`🎉【${state.targetTabCity}】当前全部符合条件的期望职位已全部投递完成！`);
                         return;
                     }
                 }
@@ -1565,16 +1647,28 @@
 
             logStatus(`[已检 ${processedSignatures.size}] 分析: ${title || '职位'} | ${company || '公司'} | ${salaryText} [识:${salaryRange.min}-${salaryRange.max}K 上限:${currentMaxLimit}K]`);
 
-            // 过滤准则 0: 城市白名单
-            if (CONFIG.targetCities && CONFIG.targetCities.length > 0) {
-                const isCityMatch = CONFIG.targetCities.some(city =>
-                    areaText.includes(city) || cardFullText.includes(city)
-                );
-                if (!isCityMatch) {
+            // ── 过滤准则 0: 城市强校验（严格遵从锁定城市，防止误投其他城市） ──
+            const currentLockedCity = state.targetTabCity || "杭州";
+            const detectedJobCity = getCityFromText(`${areaText} ${cardFullText}`);
+
+            if (currentLockedCity !== "三城轮投") {
+                const isCityStrictMatch = isJobMatchingCity(areaText, cardFullText, currentLockedCity);
+                if (!isCityStrictMatch) {
                     state.skippedCount++;
                     saveState();
                     updateUI();
-                    logStatus(`[跳过] 非目标城市 (仅限${CONFIG.targetCities.join('/')}): ${title} @ ${company}`);
+                    logStatus(`🛑 [城市拦截] 当前已锁定「${currentLockedCity}」，跳过异地职位(${detectedJobCity || areaText || '未知'}): ${title} @ ${company}`);
+                    await sleep(350);
+                    return runLoop();
+                }
+            } else {
+                // 三城轮投模式：必须命中 杭州 / 广州 / 苏州 之一
+                const isThreeCityMatch = isJobMatchingCity(areaText, cardFullText, "三城轮投");
+                if (!isThreeCityMatch) {
+                    state.skippedCount++;
+                    saveState();
+                    updateUI();
+                    logStatus(`🛑 [城市拦截] 非目标三城职位(${detectedJobCity || areaText || '其他城市'}): ${title} @ ${company}`);
                     await sleep(350);
                     return runLoop();
                 }
@@ -1653,6 +1747,20 @@
                 logStatus(`🛑 [详情页拦截] 命中黑名单公司「${detailBlockedCompanyHit}」(${rightDetailCompany})，绝不沟通！`);
                 await sleep(300);
                 return runLoop();
+            }
+
+            // ── 过滤准则 6.1: 详情页工作地址城市二次核验（防止卡片伪装异地推荐） ──
+            if (currentLockedCity !== "三城轮投") {
+                const rightDetailText = document.querySelector(".job-detail, .job-detail-box, .job-sec-text, .job-address, .location-address")?.innerText || '';
+                const rightCity = getCityFromText(rightDetailText);
+                if (rightCity && rightCity !== currentLockedCity) {
+                    state.skippedCount++;
+                    saveState();
+                    updateUI();
+                    logStatus(`🛑 [详情页城市绝杀] 当前锁定「${currentLockedCity}」，详情页显示属于「${rightCity}」，绝不沟通！`);
+                    await sleep(350);
+                    return runLoop();
+                }
             }
 
             // ── 获取右侧【立即沟通】按钮 ──
